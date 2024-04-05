@@ -46,9 +46,9 @@ void initMapImage(Arena* arena, Image* image)
     for (u64 x = 0; x < image->width; x++)
     {
       u64 startIdx              = (y * image->width + x) * 4;
-      image->data[startIdx + 0] = 255 * ((f64)y / (f64)image->height);
-      image->data[startIdx + 1] = 255 * ((f64)x / (f64)image->width);
-      image->data[startIdx + 2] = 0;
+      image->data[startIdx + 0] = 0xFF;
+      image->data[startIdx + 1] = 0xFF;
+      image->data[startIdx + 2] = 0xFF;
       image->data[startIdx + 3] = 0xFF;
     }
   }
@@ -62,50 +62,39 @@ inline f64 degreesToRadians(f64 degrees)
 
 void initMap(Arena* arena, Map* map, u8 width, u8 height)
 {
-  map->height  = height;
-  map->width   = width;
+  map->height         = height;
+  map->width          = width;
 
-  map->playerX = 20.0f;
-  map->playerY = 15.0f;
-  map->playerA = degreesToRadians(85.0f);
-  map->fov     = degreesToRadians(75.0f);
+  map->playerX        = 100.0f * (3.456f / 16.0f);
+  map->playerY        = 100.0f * (2.345f / 16.0f);
+  map->playerA        = 1.523;
+  map->fov            = PI / 3;
 
-  u64 mapSize  = map->height * map->width;
-  map->tiles   = ArenaPushArray(arena, u8, mapSize);
-  for (u64 i = 0; i < mapSize; i++)
+  u64        mapSize  = map->height * map->width;
+  const char mapstr[] = "0000222222220000"
+                        "1              0"
+                        "1      11111   0"
+                        "1     0        0"
+                        "0     0  1110000"
+                        "0     3        0"
+                        "0   10000      0"
+                        "0   0   11100  0"
+                        "0   0   0      0"
+                        "0   0   1  00000"
+                        "0       1      0"
+                        "2       1      0"
+                        "0       0      0"
+                        "0 0000000      0"
+                        "0              0"
+                        "0002222222200000";
+  map->tiles          = ArenaPushArray(arena, u8, mapSize);
+  for (u64 y = 0; y < height; y++)
   {
-    map->tiles[i] = 0;
-  }
-  for (u64 i = 0; i < height; i++)
-  {
-    map->tiles[COORDINATE_TO_INDEX_2D(0, i, width)]          = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(i, 0, width)]          = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(width - 1, i, width)]  = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(i, height - 1, width)] = 1;
-  }
-
-  for (u64 i = 0; i < 6; i++)
-  {
-    map->tiles[COORDINATE_TO_INDEX_2D(i + 2, height - 3, width)] = 1;
-  }
-
-  for (u64 i = 0; i < 8; i++)
-  {
-    map->tiles[COORDINATE_TO_INDEX_2D(8, height - 3 - i, width)] = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(9 + i, 4, width)]          = 1;
-  }
-
-  for (u64 i = 0; i < 5; i++)
-  {
-    map->tiles[COORDINATE_TO_INDEX_2D(8 + i, height - 3 - 6, width)]  = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(8 - i, height - 3 - 7, width)]  = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(11 + i, height - 3 - 4, width)] = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(7 + i, 2, width)]               = 1;
-  }
-  for (u64 i = 0; i < 4; i++)
-  {
-    map->tiles[COORDINATE_TO_INDEX_2D(4, height - 10 + i, width)] = 1;
-    map->tiles[COORDINATE_TO_INDEX_2D(6, height - 10 - i, width)] = 1;
+    for (u64 x = 0; x < width; x++)
+    {
+      u64 idx         = COORDINATE_TO_INDEX_2D(x, y, width);
+      map->tiles[idx] = mapstr[idx];
+    }
   }
 }
 
@@ -121,18 +110,50 @@ void drawPixelToImage(Image* image, u64 x, u64 y, Color* color)
   image->data[imageIndex + 2] = b;
   image->data[imageIndex + 3] = a;
 }
-void drawRectangleToImage(Image* image, u64 imageX, u64 imageY, u64 width, u64 height, Color* color)
+
+void drawRectangleToImage(Image* image, u64 x, u64 y, u64 width, u64 height, u8 colorIndex)
 {
-  for (u64 y = 0; y < height; y++)
+  static Color colors[7] = {CYAN, GREEN, RED, YELLOW, BLUE, WHITE, BLACK};
+
+  for (u64 yOffset = 0; yOffset < height; yOffset++)
   {
-    for (u64 x = 0; x < width; x++)
+    for (u64 xOffset = 0; xOffset < width; xOffset++)
     {
-      drawPixelToImage(image, x + imageX, y + imageY, color);
+      Color color = colors[colorIndex];
+      drawPixelToImage(image, xOffset + x, y + yOffset, (Color*)&color);
     }
   }
 }
 
-void addTilesToMapImage(Map* map, Image* image)
+void add3DMapToImage(Map* map, Image* image)
+{
+  f64 fovStep = map->fov / 512.0f;
+  for (i64 i = 0; i < 512; i++)
+  {
+    f64 r    = map->playerA + i * fovStep;
+    f64 step = 1.0f;
+    while (step < 100.0f)
+    {
+      f64 x     = map->playerX + step * cos(r);
+      f64 y     = map->playerY + step * sin(r);
+      u64 tileX = (x / 100.0f) * map->width;
+      u64 tileY = (y / 100.0f) * map->height;
+      u8  tile  = map->tiles[COORDINATE_TO_INDEX_2D(tileX, tileY, map->width)];
+      if (tile != ' ')
+      {
+
+        f64 heightScale = cos(r - map->playerA) * (1 - step / 100.0f) * 0.25f;
+        u64 height      = (u64)(image->height * heightScale);
+        u64 startY      = image->height / 2 - height / 2;
+        drawRectangleToImage(image, i - 256, startY, 1, height, tile - '0');
+        break;
+      }
+      step += 0.25f;
+    }
+  }
+}
+
+void add2DMapToImage(Map* map, Image* image)
 {
   u64 height     = map->height;
   u64 width      = map->width;
@@ -147,7 +168,7 @@ void addTilesToMapImage(Map* map, Image* image)
       {
         u64 imageX = x * tileWidth;
         u64 imageY = y * tileHeight;
-        drawRectangleToImage(image, imageX, imageY, tileWidth, tileHeight, &CYAN);
+        drawRectangleToImage(image, imageX, imageY, tileWidth, tileHeight, 1);
       }
     }
   }
@@ -155,13 +176,13 @@ void addTilesToMapImage(Map* map, Image* image)
   // draw player
   u64 playerX = (map->playerX / 100.0f) * image->width;
   u64 playerY = (map->playerY / 100.0f) * image->height;
-  drawRectangleToImage(image, playerX, playerY, tileWidth / 5, tileHeight / 5, &WHITE);
+  drawRectangleToImage(image, playerX, playerY, tileWidth / 5, tileHeight / 5, 0);
 
   // draw player fov
   f64 fovStep = map->fov / 512.0f;
   for (i64 i = -256; i < 256; i++)
   {
-    f64 r = map->playerA + i * fovStep;
+    f64 r    = map->playerA + i * fovStep;
     f64 step = 1.0f;
     while (true)
     {
@@ -192,7 +213,7 @@ int main()
   initMapImage(&arena, &image);
   initMap(&arena, &map, 16, 16);
 
-  addTilesToMapImage(&map, &image);
+  add3DMapToImage(&map, &image);
 
   String fileName = {};
   sta_initString(&fileName, "out.ppm");
