@@ -4,14 +4,17 @@
 #include "files.h"
 #include "string.h"
 #include "vector.h"
+#include <math.h>
 
 #define COORDINATE_TO_INDEX_2D(x, y, width) (((y) * width) + (x))
 
 struct Map
 {
   u8* tiles;
-  f64 x;
-  f64 y;
+  f64 playerX;
+  f64 playerY;
+  f64 playerA;
+  f64 fov;
   u8  width;
   u8  height;
 };
@@ -51,16 +54,24 @@ void initMapImage(Arena* arena, Image* image)
   }
 }
 
+inline f64 degreesToRadians(f64 degrees)
+{
+
+  return degrees * PI / 180.0f;
+}
+
 void initMap(Arena* arena, Map* map, u8 width, u8 height)
 {
-  map->height = height;
-  map->width  = width;
+  map->height  = height;
+  map->width   = width;
 
-  map->x      = 20.0f;
-  map->y      = 15.0f;
+  map->playerX = 20.0f;
+  map->playerY = 15.0f;
+  map->playerA = degreesToRadians(85.0f);
+  map->fov     = degreesToRadians(75.0f);
 
-  u64 mapSize = map->height * map->width;
-  map->tiles  = ArenaPushArray(arena, u8, mapSize);
+  u64 mapSize  = map->height * map->width;
+  map->tiles   = ArenaPushArray(arena, u8, mapSize);
   for (u64 i = 0; i < mapSize; i++)
   {
     map->tiles[i] = 0;
@@ -98,21 +109,25 @@ void initMap(Arena* arena, Map* map, u8 width, u8 height)
   }
 }
 
+void drawPixelToImage(Image* image, u64 x, u64 y, Color* color)
+{
+  u8  r                       = color->r * 255;
+  u8  g                       = color->g * 255;
+  u8  b                       = color->b * 255;
+  u8  a                       = color->a * 255;
+  u64 imageIndex              = COORDINATE_TO_INDEX_2D(x, y, image->width) * 4;
+  image->data[imageIndex + 0] = r;
+  image->data[imageIndex + 1] = g;
+  image->data[imageIndex + 2] = b;
+  image->data[imageIndex + 3] = a;
+}
 void drawRectangleToImage(Image* image, u64 imageX, u64 imageY, u64 width, u64 height, Color* color)
 {
-  u8 r = color->r * 255;
-  u8 g = color->g * 255;
-  u8 b = color->b * 255;
-  u8 a = color->a * 255;
   for (u64 y = 0; y < height; y++)
   {
     for (u64 x = 0; x < width; x++)
     {
-      u64 imageIndex              = COORDINATE_TO_INDEX_2D(x + imageX, y + imageY, image->width) * 4;
-      image->data[imageIndex + 0] = r;
-      image->data[imageIndex + 1] = g;
-      image->data[imageIndex + 2] = b;
-      image->data[imageIndex + 3] = a;
+      drawPixelToImage(image, x + imageX, y + imageY, color);
     }
   }
 }
@@ -138,9 +153,32 @@ void addTilesToMapImage(Map* map, Image* image)
   }
 
   // draw player
-  u64 playerX = (map->x / 100.0f) * image->width;
-  u64 playerY = (map->y / 100.0f) * image->height;
+  u64 playerX = (map->playerX / 100.0f) * image->width;
+  u64 playerY = (map->playerY / 100.0f) * image->height;
   drawRectangleToImage(image, playerX, playerY, tileWidth / 5, tileHeight / 5, &WHITE);
+
+  // draw player fov
+  f64 fovStep = map->fov / 512.0f;
+  for (i64 i = -256; i < 256; i++)
+  {
+    f64 r = map->playerA + i * fovStep;
+    f64 step = 1.0f;
+    while (true)
+    {
+      f32 x     = map->playerX + step * cos(r);
+      f32 y     = map->playerY + step * sin(r);
+      u64 tileX = (x / 100.0f) * map->width;
+      u64 tileY = (y / 100.0f) * map->height;
+      if (map->tiles[COORDINATE_TO_INDEX_2D(tileX, tileY, width)] != 0)
+      {
+        break;
+      }
+      u64 imagePlayerX = (x / 100.0f) * image->width;
+      u64 imagePlayerY = (y / 100.0f) * image->height;
+      drawPixelToImage(image, imagePlayerX, imagePlayerY, &WHITE);
+      step += 0.5f;
+    }
+  }
 }
 
 int main()
