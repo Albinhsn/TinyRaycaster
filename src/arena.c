@@ -6,8 +6,8 @@ u64 ArenaPush(Arena* arena, u64 size)
 {
   if (arena->ptr + size > arena->maxSize)
   {
-    printf("Assigned %ld out of %ld\n", arena->ptr, arena->maxSize);
-    exit(1);
+    printf("SEVERE: Assigned %ld out of %ld\n", arena->ptr, arena->maxSize);
+    return 0;
   }
   u64 out = arena->memory + arena->ptr;
   arena->ptr += size;

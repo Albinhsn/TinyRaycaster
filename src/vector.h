@@ -11,6 +11,15 @@
 #define CREATE_VEC3f32(x, y, z)    ((struct Vec3f32){x, y, z})
 #define CREATE_VEC4f32(x, y, z, w) ((struct Vec4f32){x, y, z, w})
 
+typedef struct Vec4f32;
+
+#define RED    ((struct Vec4f32){1.0f, 0.0f, 0.0f, 1.0f})
+#define YELLOW ((struct Vec4f32){1.0f, 1.0f, 0.0f, 1.0f})
+#define GREEN  ((struct Vec4f32){0.0f, 1.0f, 0.0f, 1.0f})
+#define CYAN   ((struct Vec4f32){0.0f, 1.0f, 1.0f, 1.0f})
+#define PURPLE ((struct Vec4f32){1.0f, 0.0f, 1.0f, 1.0f})
+#define BLUE   ((struct Vec4f32){1.0f, 0.0f, 0.0f, 1.0f})
+
 struct Vec4u8
 {
   union
