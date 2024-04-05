@@ -2,6 +2,7 @@
 #include "arena.h"
 #include "common.h"
 #include "files.h"
+#include "lodepng.h"
 #include "string.h"
 #include "vector.h"
 #include <math.h>
@@ -20,7 +21,14 @@ struct Map
 };
 typedef struct Map Map;
 
-inline u32         packColor(u8 r, u8 g, u8 b, u8 a)
+struct Texture
+{
+  Image image;
+  u64   textureCount;
+};
+typedef struct Texture Texture;
+
+inline u32             packColor(u8 r, u8 g, u8 b, u8 a)
 {
   return (a << 24) | (b << 16) | (g << 8) | r;
 }
@@ -111,24 +119,69 @@ void drawPixelToImage(Image* image, u64 x, u64 y, Color* color)
   image->data[imageIndex + 3] = a;
 }
 
-void drawRectangleToImage(Image* image, u64 x, u64 y, u64 width, u64 height, u8 colorIndex)
+static Color colors[7] = {CYAN, GREEN, RED, YELLOW, BLUE, WHITE, BLACK};
+void         drawRectangleToImage(Image* image, u64 x, u64 y, u64 width, u64 height, Color* color)
 {
-  static Color colors[7] = {CYAN, GREEN, RED, YELLOW, BLUE, WHITE, BLACK};
 
   for (u64 yOffset = 0; yOffset < height; yOffset++)
   {
     for (u64 xOffset = 0; xOffset < width; xOffset++)
     {
-      Color color = colors[colorIndex];
-      drawPixelToImage(image, xOffset + x, y + yOffset, (Color*)&color);
+      if (xOffset + x >= image->width || yOffset + y >= image->height)
+      {
+        continue;
+      }
+      drawPixelToImage(image, xOffset + x, y + yOffset, color);
     }
   }
 }
 
-void add3DMapToImage(Map* map, Image* image)
+Color sampleTexture(Texture* texture, u64 textureIndex, f64 x, f64 y)
+{
+  Color color           = {};
+
+  f64   widthPerTexture = (f64)texture->image.width / (f64)texture->textureCount;
+  f64   startTextureX   = widthPerTexture * textureIndex;
+
+  f64   xOffset         = widthPerTexture * x;
+  f64   yOffset         = (texture->image.width * texture->image.height * 4) * y;
+
+  u64   offset          = (u64)(yOffset + xOffset);
+  printf("Sampling at %lf %lf %lf %lf %ld of %ld\n", x, y, xOffset, yOffset, offset, texture->image.width * texture->image.height * 4);
+  u8* pixel = &texture->image.data[offset];
+
+  color.r   = 0xFF * pixel[0];
+  color.g   = 0xFF * pixel[1];
+  color.b   = 0xFF * pixel[2];
+  color.a   = 0xFF * pixel[3];
+
+  return color;
+}
+
+void drawTextureToImage(Image* image, u64 x, u64 tileX, u64 tileY, Texture* texture, u64 textureIndex)
+{
+
+  // Get the % of the way in we are from tileX -> x
+  //  to figure out at what x we want to sample the texture
+  u64 y, width, height;
+  for (u64 yOffset = 0; yOffset < height; yOffset++)
+  {
+    for (u64 xOffset = 0; xOffset < width; xOffset++)
+    {
+      if (xOffset + x >= image->width || yOffset + y >= image->height)
+      {
+        continue;
+      }
+      Color color = sampleTexture(texture, textureIndex, xOffset / (f64)width, yOffset / (f64)height);
+      drawPixelToImage(image, xOffset + x, y + yOffset, &color);
+    }
+  }
+}
+
+void add3DMapToImage(Map* map, Image* image, Texture* texture, const u64 textureCount)
 {
   f64 fovStep = map->fov / 512.0f;
-  for (i64 i = 0; i < 512; i++)
+  for (i64 i = -256; i < 256; i++)
   {
     f64 r    = map->playerA + i * fovStep;
     f64 step = 1.0f;
@@ -142,10 +195,7 @@ void add3DMapToImage(Map* map, Image* image)
       if (tile != ' ')
       {
 
-        f64 heightScale = cos(r - map->playerA) * (1 - step / 100.0f) * 0.25f;
-        u64 height      = (u64)(image->height * heightScale);
-        u64 startY      = image->height / 2 - height / 2;
-        drawRectangleToImage(image, i - 256, startY, 1, height, tile - '0');
+        drawTextureToImage(image, i + 256, tileX, tileY, texture, tile - '0');
         break;
       }
       step += 0.25f;
@@ -168,7 +218,7 @@ void add2DMapToImage(Map* map, Image* image)
       {
         u64 imageX = x * tileWidth;
         u64 imageY = y * tileHeight;
-        drawRectangleToImage(image, imageX, imageY, tileWidth, tileHeight, 1);
+        drawRectangleToImage(image, imageX, imageY, tileWidth, tileHeight, &colors[1]);
       }
     }
   }
@@ -204,16 +254,20 @@ void add2DMapToImage(Map* map, Image* image)
 
 int main()
 {
-  Image image   = {};
-  Arena arena   = {};
-  arena.maxSize = 1024 * 1024 * 4;
-  arena.memory  = (u64)malloc(arena.maxSize);
-  Map map       = {};
+  Image     image        = {};
+  Arena     arena        = {};
+  Texture   texture      = {};
+  const int textureCount = 6;
+  int       result       = lodepng_decode32_file(&texture.image.data, (u32*)&texture.image.width, (u32*)&texture.image.height, "./walltext.png");
+
+  arena.maxSize          = 1024 * 1024 * 4;
+  arena.memory           = (u64)malloc(arena.maxSize);
+  Map map                = {};
 
   initMapImage(&arena, &image);
   initMap(&arena, &map, 16, 16);
 
-  add3DMapToImage(&map, &image);
+  add3DMapToImage(&map, &image, &texture, textureCount);
 
   String fileName = {};
   sta_initString(&fileName, "out.ppm");
