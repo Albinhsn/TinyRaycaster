@@ -10,6 +10,8 @@
 struct Map
 {
   u8* tiles;
+  f64 x;
+  f64 y;
   u8  width;
   u8  height;
 };
@@ -53,6 +55,9 @@ void initMap(Arena* arena, Map* map, u8 width, u8 height)
 {
   map->height = height;
   map->width  = width;
+
+  map->x      = 20.0f;
+  map->y      = 15.0f;
 
   u64 mapSize = map->height * map->width;
   map->tiles  = ArenaPushArray(arena, u8, mapSize);
@@ -131,6 +136,11 @@ void addTilesToMapImage(Map* map, Image* image)
       }
     }
   }
+
+  // draw player
+  u64 playerX = (map->x / 100.0f) * image->width;
+  u64 playerY = (map->y / 100.0f) * image->height;
+  drawRectangleToImage(image, playerX, playerY, tileWidth / 5, tileHeight / 5, &WHITE);
 }
 
 int main()
