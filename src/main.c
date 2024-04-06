@@ -7,16 +7,35 @@
 #include "vector.h"
 #include <math.h>
 
-#define COORDINATE_TO_INDEX_2D(x, y, width) (((y) * width) + (x))
-
-static Color colors[7] = {CYAN, GREEN, RED, YELLOW, BLUE, PURPLE, WHITE};
-
 struct Sprite
 {
   f64 x, y;
   u64 textureId;
 };
 typedef struct Sprite Sprite;
+
+inline f64            getDistance(f64 x0, f64 y0, f64 x1, f64 y1)
+{
+
+  f64 xDiff = x0 - x1;
+  f64 yDiff = y0 - y1;
+  return sqrt(xDiff * xDiff + yDiff * yDiff);
+}
+
+f64 playerX;
+f64 playerY;
+
+int cmpSprite(const void* a_, const void* b_)
+{
+  Sprite* a = (Sprite*)a_;
+  Sprite* b = (Sprite*)b_;
+
+  return getDistance(playerX, playerY, b->x, b->y) - getDistance(playerX, playerY, a->x, a->y);
+}
+
+#define COORDINATE_TO_INDEX_2D(x, y, width) (((y) * width) + (x))
+
+static Color colors[7] = {CYAN, GREEN, RED, YELLOW, BLUE, PURPLE, WHITE};
 
 struct Map
 {
@@ -125,7 +144,7 @@ void initMap(Arena* arena, Map* map, u8 width, u8 height)
     }
   }
 
-  map->spriteCount   = 3;
+  map->spriteCount   = 4;
   map->sprites       = ArenaPushArray(arena, Sprite, map->spriteCount);
   Sprite* sprite0    = &map->sprites[0];
   sprite0->x         = 1.834;
@@ -141,6 +160,11 @@ void initMap(Arena* arena, Map* map, u8 width, u8 height)
   sprite2->x         = 4.123;
   sprite2->y         = 10.265;
   sprite2->textureId = 1;
+
+  Sprite* sprite3    = &map->sprites[3];
+  sprite3->x         = 3.023;
+  sprite3->y         = 3.812;
+  sprite3->textureId = 2;
 }
 
 void drawPixelToFramebufferU8(Framebuffer* image, u64 x, u64 y, Vec4u8* color)
@@ -246,11 +270,11 @@ void drawSprite(Map* map, Framebuffer* framebuffer, Sprite* sprite, Texture* mon
   f64 spriteDir = atan2(yDiff, xDiff);
   while (spriteDir - map->playerA > PI)
   {
-    spriteDir -= 2 * PI;
+    spriteDir -= PI * 0.5f;
   }
   while (spriteDir - map->playerA < -PI)
   {
-    spriteDir += 2 * PI;
+    spriteDir += PI * 0.5f;
   }
 
   f64 spriteDist      = sqrt(xDiff * xDiff + yDiff * yDiff);
@@ -259,7 +283,7 @@ void drawSprite(Map* map, Framebuffer* framebuffer, Sprite* sprite, Texture* mon
 
   u64 centerX         = framebuffer->width - (f64)framebuffer->width / 4 - spriteSize / 2;
   u64 x               = centerX + (dirDiff / map->fov) * ((f64)framebuffer->width / 2);
-  u64 centerY         = framebuffer->height / 2 - (u64)spriteSize / 2;
+  u64 centerY         = (framebuffer->height - spriteSize) / 2;
   u64 width           = spriteSize;
   u64 height          = spriteSize;
 
@@ -282,7 +306,7 @@ void drawSprite(Map* map, Framebuffer* framebuffer, Sprite* sprite, Texture* mon
         u64 yTextureOffset = (monsters->image.width * 4) * (u64)(monsters->image.height * sampleY);
         u64 xTextureOffset = (sprite->textureId * widthPerTexture * 4) + 4 * (u64)(widthPerTexture * sampleX);
 
-        u8* sample = &monsters->image.data[xTextureOffset + yTextureOffset];
+        u8* sample         = &monsters->image.data[xTextureOffset + yTextureOffset];
 
         if (sample[3] != 0)
         {
@@ -291,14 +315,6 @@ void drawSprite(Map* map, Framebuffer* framebuffer, Sprite* sprite, Texture* mon
       }
     }
   }
-}
-
-inline f64 getDistance(f64 x0, f64 y0, f64 x1, f64 y1)
-{
-
-  f64 xDiff = x0 - x1;
-  f64 yDiff = y0 - y1;
-  return sqrt(xDiff * xDiff + yDiff * yDiff);
 }
 
 void add3DMapToImage(Map* map, Framebuffer* framebuffer, Texture* textureWall, Texture* textureMonster)
@@ -332,9 +348,13 @@ void add3DMapToImage(Map* map, Framebuffer* framebuffer, Texture* textureWall, T
   }
 
   u64 spriteCount = map->spriteCount;
+  playerX         = map->playerX;
+  playerY         = map->playerY;
+  qsort(map->sprites, spriteCount, sizeof(Sprite), cmpSprite);
+  Sprite* sprites = map->sprites;
   for (u64 i = 0; i < spriteCount; i++)
   {
-    drawSprite(map, framebuffer, &map->sprites[i], textureMonster);
+    drawSprite(map, framebuffer, &sprites[i], textureMonster);
   }
 }
 
