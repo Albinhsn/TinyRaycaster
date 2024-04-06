@@ -2,7 +2,10 @@
 #define COMMON_H
 
 #include <stdint.h>
-#define ArrayCount(Array) (sizeof(Array) / sizeof((Array)[0]))
+#define ArrayCount(Array)  (sizeof(Array) / sizeof((Array)[0]))
+
+#define MAX(a, b)          ((a) < (b) ? (b) : (a))
+#define MIN(a, b)          ((a) > (b) ? (b) : (a))
 
 #define ANSI_COLOR_RED     "\x1b[31m"
 #define ANSI_COLOR_GREEN   "\x1b[32m"
