@@ -115,7 +115,6 @@ void drawPixelToImageU8(Image* image, u64 x, u64 y, Vec4u8* color)
   image->data[imageIndex + 1] = color->g;
   image->data[imageIndex + 2] = color->b;
   image->data[imageIndex + 3] = color->a;
-  printf("%d %d %d %d\n", color->r, color->g, color->b, color->a);
 }
 void drawPixelToImage(Image* image, u64 x, u64 y, Color* color)
 {
@@ -146,24 +145,6 @@ void drawRectangleToImage(Image* image, u64 x, u64 y, u64 width, u64 height, Col
   }
 }
 
-Color sampleTexture(Texture* texture, u64 textureIndex, f64 x, f64 y)
-{
-  Color color           = {};
-
-  f64   widthPerTexture = (f64)texture->image.width / (f64)texture->textureCount;
-  f64   startTextureX   = widthPerTexture * textureIndex;
-
-  u64   offset          = startTextureX;
-  u8*   pixel           = &texture->image.data[offset];
-
-  color.r               = pixel[0];
-  color.g               = pixel[1];
-  color.b               = pixel[2];
-  color.a               = pixel[3];
-
-  return color;
-}
-
 Color sampleTextureFirstPixel(Texture* texture, u64 textureIndex)
 {
   Color color           = {};
@@ -182,13 +163,20 @@ Color sampleTextureFirstPixel(Texture* texture, u64 textureIndex)
   return color;
 }
 
-void drawTextureToImage(Texture* texture, Image* image, u64 x, u64 height, f64 hitX, f64 hitY, u64 textureIndex)
+void drawTextureToImage(Map* map, Texture* texture, Image* image, u64 x, u64 height, f64 hitX, f64 hitY, u64 textureIndex)
 {
+  u64 tileX           = (hitX / 100.0f) * map->width;
+  f64 tileWidth       = 100.0f / map->width;
 
-  u64 y = image->height / 2 - height / 2;
-  // ToDo
-  // How far into the image we need to sample
-  f64 sampleX = 0;
+  u64 y               = image->height / 2 - height / 2;
+  f64 sampleX         = ((f64)(hitX - tileX)) / ((f64)tileWidth);
+
+  u64 widthPerTexture = texture->image.width / texture->textureCount * 4;
+
+  u64 xOffset         = widthPerTexture * textureIndex + ((u64)(sampleX * texture->image.width / (f64)texture->textureCount) * 4);
+  printf("%ld %ld\n", ((u64)(sampleX * texture->image.width) * 4) / texture->textureCount, (((u64)(sampleX * texture->image.width) * 4) / texture->textureCount) % 4);
+
+  Color color = {};
   for (u64 yOffset = 0; yOffset < height; yOffset++)
   {
     if (yOffset + y >= image->height)
@@ -196,9 +184,12 @@ void drawTextureToImage(Texture* texture, Image* image, u64 x, u64 height, f64 h
       continue;
     }
 
-    f64   sampleY = (f64)yOffset / (f64)height;
-    Color color   = sampleTextureFirstPixel(texture, textureIndex);
-    drawPixelToImage(image, x, y + yOffset, &color);
+    f64 sampleY        = ((f64)yOffset / (f64)height);
+
+    u64 yTextureOffset = (texture->image.width * 4) * (u64)(texture->image.height * sampleY);
+    u8* pixel          = &texture->image.data[xOffset + yTextureOffset];
+
+    drawPixelToImageU8(image, x, y + yOffset, (Vec4u8*)pixel);
   }
 }
 
@@ -224,7 +215,7 @@ void add3DMapToImage(Map* map, Image* image, Texture* texture)
 
         f64 heightScale = cos(r - map->playerA) * (1 - step / 100.0f) * 0.25f;
         u64 height      = (u64)((f64)image->height * heightScale);
-        drawTextureToImage(texture, image, i + halvedScreenWidth + screenWidth, height, x, y, tile - '0');
+        drawTextureToImage(map, texture, image, i + halvedScreenWidth + screenWidth, height, x, y, tile - '0');
         break;
       }
       step += 0.25f;
