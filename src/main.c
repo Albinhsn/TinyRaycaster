@@ -39,7 +39,15 @@ struct Texture
 };
 typedef struct Texture Texture;
 
-inline u32             packColor(u8 r, u8 g, u8 b, u8 a)
+struct Framebuffer
+{
+  u64            width, height;
+  unsigned char* data;
+  f64*           zBuffer;
+};
+typedef struct Framebuffer Framebuffer;
+
+inline u32                 packColor(u8 r, u8 g, u8 b, u8 a)
 {
   return (a << 24) | (b << 16) | (g << 8) | r;
 }
@@ -53,12 +61,13 @@ inline void unpackColor(Vec4u8* res, u32 color)
   res->a = (color >> 24) & 0xFF;
 }
 
-void initMapImage(Arena* arena, Image* image)
+void initMapImage(Arena* arena, Framebuffer* image)
 {
-  image->width  = 512 * 2;
-  image->height = 512;
-  u64 imageSize = image->width * image->height * 4;
-  image->data   = ArenaPushArray(arena, u8, imageSize);
+  image->width   = 512 * 2;
+  image->height  = 512;
+  u64 imageSize  = image->width * image->height * 4;
+  image->data    = ArenaPushArray(arena, u8, imageSize);
+  image->zBuffer = ArenaPushArray(arena, f64, image->width / 2);
 
   for (u64 y = 0; y < image->height; y++)
   {
@@ -134,7 +143,7 @@ void initMap(Arena* arena, Map* map, u8 width, u8 height)
   sprite2->textureId = 1;
 }
 
-void drawPixelToImageU8(Image* image, u64 x, u64 y, Vec4u8* color)
+void drawPixelToFramebufferU8(Framebuffer* image, u64 x, u64 y, Vec4u8* color)
 {
   u64 imageIndex              = COORDINATE_TO_INDEX_2D(x, y, image->width) * 4;
   image->data[imageIndex + 0] = color->r;
@@ -142,31 +151,31 @@ void drawPixelToImageU8(Image* image, u64 x, u64 y, Vec4u8* color)
   image->data[imageIndex + 2] = color->b;
   image->data[imageIndex + 3] = color->a;
 }
-void drawPixelToImage(Image* image, u64 x, u64 y, Color* color)
+void drawPixelToFramebuffer(Framebuffer* framebuffer, u64 x, u64 y, Color* color)
 {
-  u8  r                       = color->r * 255;
-  u8  g                       = color->g * 255;
-  u8  b                       = color->b * 255;
-  u8  a                       = color->a * 255;
-  u64 imageIndex              = COORDINATE_TO_INDEX_2D(x, y, image->width) * 4;
-  image->data[imageIndex + 0] = r;
-  image->data[imageIndex + 1] = g;
-  image->data[imageIndex + 2] = b;
-  image->data[imageIndex + 3] = a;
+  u8  r                             = color->r * 255;
+  u8  g                             = color->g * 255;
+  u8  b                             = color->b * 255;
+  u8  a                             = color->a * 255;
+  u64 imageIndex                    = COORDINATE_TO_INDEX_2D(x, y, framebuffer->width) * 4;
+  framebuffer->data[imageIndex + 0] = r;
+  framebuffer->data[imageIndex + 1] = g;
+  framebuffer->data[imageIndex + 2] = b;
+  framebuffer->data[imageIndex + 3] = a;
 }
 
-void drawRectangleToImage(Image* image, u64 x, u64 y, u64 width, u64 height, Color* color)
+void drawRectangleToImage(Framebuffer* framebuffer, u64 x, u64 y, u64 width, u64 height, Color* color)
 {
 
   for (u64 yOffset = 0; yOffset < height; yOffset++)
   {
     for (u64 xOffset = 0; xOffset < width; xOffset++)
     {
-      if (xOffset + x >= image->width || yOffset + y >= image->height)
+      if (xOffset + x >= framebuffer->width || yOffset + y >= framebuffer->height)
       {
         continue;
       }
-      drawPixelToImage(image, xOffset + x, y + yOffset, color);
+      drawPixelToFramebuffer(framebuffer, xOffset + x, y + yOffset, color);
     }
   }
 }
@@ -203,21 +212,19 @@ inline f64 getDiff(f64 hitX, f64 hitY)
   return maxX > maxY ? yDiff : xDiff;
 }
 
-void drawTextureToImage(Texture* texture, Image* image, u64 height, f64 hitX, f64 hitY, u64 textureIndex, u64 pixelX)
+void drawTextureToImage(Texture* texture, Framebuffer* framebuffer, u64 height, f64 hitX, f64 hitY, u64 textureIndex, u64 pixelX)
 {
 
-  f64   diff            = getDiff(hitX, hitY);
+  f64 diff            = getDiff(hitX, hitY);
 
-  u64   startY          = image->height / 2 - height / 2;
-  u64   widthPerTexture = texture->image.width / texture->textureCount;
+  u64 startY          = framebuffer->height / 2 - height / 2;
+  u64 widthPerTexture = texture->image.width / texture->textureCount;
 
-  u64   xOffset         = (u64)(diff * widthPerTexture) * 4 + textureIndex * widthPerTexture * 4;
-
-  Color color           = {};
+  u64 xOffset         = (u64)(diff * widthPerTexture) * 4 + textureIndex * widthPerTexture * 4;
 
   for (u64 yOffset = 0; yOffset < height; yOffset++)
   {
-    if (yOffset + startY >= image->height)
+    if (yOffset + startY >= framebuffer->height)
     {
       continue;
     }
@@ -227,14 +234,77 @@ void drawTextureToImage(Texture* texture, Image* image, u64 height, f64 hitX, f6
     u64 yTextureOffset = (texture->image.width * 4) * (u64)(texture->image.height * sampleY);
     u8* pixel          = &texture->image.data[xOffset + yTextureOffset];
 
-    drawPixelToImageU8(image, pixelX, startY + yOffset, (Vec4u8*)pixel);
+    drawPixelToFramebufferU8(framebuffer, pixelX, startY + yOffset, (Vec4u8*)pixel);
   }
 }
 
-void add3DMapToImage(Map* map, Image* image, Texture* texture)
+void drawSprite(Map* map, Framebuffer* framebuffer, Sprite* sprite, Texture* monsters)
+{
+  f64 xDiff     = sprite->x - map->playerX;
+  f64 yDiff     = sprite->y - map->playerY;
+
+  f64 spriteDir = atan2(yDiff, xDiff);
+  while (spriteDir - map->playerA > PI)
+  {
+    spriteDir -= 2 * PI;
+  }
+  while (spriteDir - map->playerA < -PI)
+  {
+    spriteDir += 2 * PI;
+  }
+
+  f64 spriteDist      = sqrt(xDiff * xDiff + yDiff * yDiff);
+  f64 spriteSize      = MIN(1000, (u64)(framebuffer->height / spriteDist));
+  f64 dirDiff         = spriteDir - map->playerA;
+
+  u64 centerX         = framebuffer->width - (f64)framebuffer->width / 4 - spriteSize / 2;
+  u64 x               = centerX + (dirDiff / map->fov) * ((f64)framebuffer->width / 2);
+  u64 centerY         = framebuffer->height / 2 - (u64)spriteSize / 2;
+  u64 width           = spriteSize;
+  u64 height          = spriteSize;
+
+  u64 widthPerTexture = monsters->image.width / monsters->textureCount;
+
+  for (u64 yOffset = 0; yOffset < height; yOffset++)
+  {
+    for (u64 xOffset = 0; xOffset < width; xOffset++)
+    {
+      if (xOffset + x >= framebuffer->width || yOffset + centerY >= framebuffer->height)
+      {
+        continue;
+      }
+      if (xOffset + x - framebuffer->width / 2 >= 0 && framebuffer->zBuffer[xOffset + x - framebuffer->width / 2] >= spriteDist)
+      {
+
+        f64 sampleY        = ((f64)yOffset / (f64)height);
+        f64 sampleX        = ((f64)xOffset / (f64)width);
+
+        u64 yTextureOffset = (monsters->image.width * 4) * (u64)(monsters->image.height * sampleY);
+        u64 xTextureOffset = (sprite->textureId * widthPerTexture * 4) + 4 * (u64)(widthPerTexture * sampleX);
+
+        u8* sample = &monsters->image.data[xTextureOffset + yTextureOffset];
+
+        if (sample[3] != 0)
+        {
+          drawPixelToFramebufferU8(framebuffer, xOffset + x, centerY + yOffset, (Vec4u8*)sample);
+        }
+      }
+    }
+  }
+}
+
+inline f64 getDistance(f64 x0, f64 y0, f64 x1, f64 y1)
+{
+
+  f64 xDiff = x0 - x1;
+  f64 yDiff = y0 - y1;
+  return sqrt(xDiff * xDiff + yDiff * yDiff);
+}
+
+void add3DMapToImage(Map* map, Framebuffer* framebuffer, Texture* textureWall, Texture* textureMonster)
 {
   f64 fovStep           = map->fov / 512.0f;
-  i64 screenWidth       = image->width / 2;
+  i64 screenWidth       = framebuffer->width / 2;
   i64 halvedScreenWidth = screenWidth / 2;
   for (i64 i = -halvedScreenWidth; i < halvedScreenWidth; i++)
   {
@@ -250,19 +320,25 @@ void add3DMapToImage(Map* map, Image* image, Texture* texture)
       u8  tile  = map->tiles[COORDINATE_TO_INDEX_2D(tileX, tileY, map->width)];
       if (tile != ' ')
       {
-
-        f64 heightScale = cos(r - map->playerA) * (1 - step / MAX(map->height, map->width)) * 0.25f;
-        u64 height      = (u64)((f64)image->height * heightScale);
-        u64 pixelX      = i + halvedScreenWidth + screenWidth;
-        drawTextureToImage(texture, image, height, x, y, tile - '0', pixelX);
+        framebuffer->zBuffer[i + 256] = getDistance(x, y, map->playerX, map->playerY);
+        f64 heightScale               = cos(r - map->playerA) * (1 - step / MAX(map->height, map->width)) * 0.25f;
+        u64 height                    = (u64)((f64)framebuffer->height * heightScale);
+        u64 pixelX                    = i + halvedScreenWidth + screenWidth;
+        drawTextureToImage(textureWall, framebuffer, height, x, y, tile - '0', pixelX);
         break;
       }
       step += 0.05f;
     }
   }
+
+  u64 spriteCount = map->spriteCount;
+  for (u64 i = 0; i < spriteCount; i++)
+  {
+    drawSprite(map, framebuffer, &map->sprites[i], textureMonster);
+  }
 }
 
-void add2DMapToImage(Map* map, Image* image, Texture* texture)
+void add2DMapToImage(Map* map, Framebuffer* image, Texture* texture)
 {
   u64 height     = map->height;
   u64 width      = map->width;
@@ -307,7 +383,7 @@ void add2DMapToImage(Map* map, Image* image, Texture* texture)
       }
       u64 imagePlayerFovX = (x / map->width) * image->width / 2;
       u64 imagePlayerFovY = (y / map->height) * image->height;
-      drawPixelToImage(image, imagePlayerFovX, imagePlayerFovY, &GRAY);
+      drawPixelToFramebuffer(image, imagePlayerFovX, imagePlayerFovY, &GRAY);
       step += 0.05f;
     }
   }
@@ -325,32 +401,48 @@ void add2DMapToImage(Map* map, Image* image, Texture* texture)
 
 int main()
 {
-  // ToDo
-  // refactor playerX and playerY to be between 0 -> mapWidth and 0 -> mapHeight
-  // get the fractional part from hitX
-  Image   image        = {};
-  Arena   arena        = {};
-  Texture texture      = {};
-  texture.textureCount = 6;
-  int result           = lodepng_decode32_file(&texture.image.data, (u32*)&texture.image.width, (u32*)&texture.image.height, "./walltext.png");
+  Framebuffer framebuffer  = {};
+  Arena       arena        = {};
+  Texture     textureWall  = {};
+  textureWall.textureCount = 6;
+  int result               = lodepng_decode32_file(&textureWall.image.data, (u32*)&textureWall.image.width, (u32*)&textureWall.image.height, "./walltext.png");
   if (result != 0)
   {
     const char* error = lodepng_error_text(result);
     printf("%s\n", error);
     printf("%d\n", result);
+    return 1;
+  }
+
+  Texture textureMonster      = {};
+  textureMonster.textureCount = 4;
+  result                      = lodepng_decode32_file(&textureMonster.image.data, (u32*)&textureMonster.image.width, (u32*)&textureMonster.image.height, "./monsters.png");
+  if (result != 0)
+  {
+    const char* error = lodepng_error_text(result);
+    printf("%s\n", error);
+    printf("%d\n", result);
+    return 1;
   }
 
   arena.maxSize = 1024 * 1024 * 4;
   arena.memory  = (u64)malloc(arena.maxSize);
   Map map       = {};
 
-  initMapImage(&arena, &image);
+  initMapImage(&arena, &framebuffer);
   initMap(&arena, &map, 16, 16);
 
-  add2DMapToImage(&map, &image, &texture);
-  add3DMapToImage(&map, &image, &texture);
+  add2DMapToImage(&map, &framebuffer, &textureWall);
+  add3DMapToImage(&map, &framebuffer, &textureWall, &textureMonster);
 
   String fileName = {};
   sta_initString(&fileName, "out.ppm");
+
+  Image image  = {};
+  image.width  = framebuffer.width;
+  image.height = framebuffer.height;
+  image.data   = framebuffer.data;
+  image.bpp    = 32;
+
   sta_writePPM(fileName, &image);
 }
