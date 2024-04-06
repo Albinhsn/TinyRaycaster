@@ -163,22 +163,35 @@ Color sampleTextureFirstPixel(Texture* texture, u64 textureIndex)
   return color;
 }
 
-void drawTextureToImage(Texture* texture, Image* image, u64 x, u64 height, f64 hitX, u64 textureIndex, u64 mapWidth)
+inline f64 getDiff(f64 hitX, f64 hitY)
 {
-  u64   tileX           = hitX;
-  f64   tileWidth       = 1.0f;
+  f64 xDiff    = (hitX - (u64)hitX);
+  f64 yDiff    = (hitY - (u64)hitY);
 
-  u64   y               = image->height / 2 - height / 2;
-  f64   sampleX         = ((f64)(hitX - tileX)) / ((f64)tileWidth);
+  f64 oneXDiff = 1 - xDiff;
+  f64 oneYDiff = 1 - yDiff;
 
-  u64   widthPerTexture = texture->image.width / texture->textureCount * 4;
+  f64 maxX     = MAX(xDiff, oneXDiff);
+  f64 maxY     = MAX(yDiff, oneYDiff);
 
-  u64   xOffset         = widthPerTexture * textureIndex + ((u64)(sampleX * texture->image.width / (f64)texture->textureCount) * 4);
+  return maxX > maxY ? yDiff : xDiff;
+}
+
+void drawTextureToImage(Texture* texture, Image* image, u64 height, f64 hitX, f64 hitY, u64 textureIndex, u64 pixelX)
+{
+
+  f64   diff            = getDiff(hitX, hitY);
+
+  u64   startY          = image->height / 2 - height / 2;
+  u64   widthPerTexture = texture->image.width / texture->textureCount;
+
+  u64   xOffset         = (u64)(diff * widthPerTexture) * 4 + textureIndex * widthPerTexture * 4;
 
   Color color           = {};
+
   for (u64 yOffset = 0; yOffset < height; yOffset++)
   {
-    if (yOffset + y >= image->height)
+    if (yOffset + startY >= image->height)
     {
       continue;
     }
@@ -188,7 +201,7 @@ void drawTextureToImage(Texture* texture, Image* image, u64 x, u64 height, f64 h
     u64 yTextureOffset = (texture->image.width * 4) * (u64)(texture->image.height * sampleY);
     u8* pixel          = &texture->image.data[xOffset + yTextureOffset];
 
-    drawPixelToImageU8(image, x, y + yOffset, (Vec4u8*)pixel);
+    drawPixelToImageU8(image, pixelX, startY + yOffset, (Vec4u8*)pixel);
   }
 }
 
@@ -214,7 +227,8 @@ void add3DMapToImage(Map* map, Image* image, Texture* texture)
 
         f64 heightScale = cos(r - map->playerA) * (1 - step / MAX(map->height, map->width)) * 0.25f;
         u64 height      = (u64)((f64)image->height * heightScale);
-        drawTextureToImage(texture, image, i + halvedScreenWidth + screenWidth, height, x, tile - '0', map->width);
+        u64 pixelX      = i + halvedScreenWidth + screenWidth;
+        drawTextureToImage(texture, image, height, x, y, tile - '0', pixelX);
         break;
       }
       step += 0.05f;
