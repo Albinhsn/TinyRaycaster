@@ -21,6 +21,7 @@ typedef struct Vec4f32;
 #define BLUE   ((struct Vec4f32){1.0f, 0.0f, 0.0f, 1.0f})
 #define BLACK ((struct Vec4f32){0.0f, 0.0f, 0.0f, 0.0f})
 #define WHITE ((struct Vec4f32){1.0f, 1.0f, 1.0f, 1.0f})
+#define GRAY ((struct Vec4f32){0.5f, 0.5f, 0.5f, 0.5f})
 
 struct Vec4u8
 {
