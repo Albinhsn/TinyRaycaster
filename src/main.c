@@ -11,15 +11,24 @@
 
 static Color colors[7] = {CYAN, GREEN, RED, YELLOW, BLUE, PURPLE, WHITE};
 
+struct Sprite
+{
+  f64 x, y;
+  u64 textureId;
+};
+typedef struct Sprite Sprite;
+
 struct Map
 {
-  u8* tiles;
-  f64 playerX;
-  f64 playerY;
-  f64 playerA;
-  f64 fov;
-  u8  width;
-  u8  height;
+  u8*     tiles;
+  Sprite* sprites;
+  u64     spriteCount;
+  f64     playerX;
+  f64     playerY;
+  f64     playerA;
+  f64     fov;
+  u8      width;
+  u8      height;
 };
 typedef struct Map Map;
 
@@ -106,6 +115,23 @@ void initMap(Arena* arena, Map* map, u8 width, u8 height)
       map->tiles[idx] = mapstr[idx];
     }
   }
+
+  map->spriteCount   = 3;
+  map->sprites       = ArenaPushArray(arena, Sprite, map->spriteCount);
+  Sprite* sprite0    = &map->sprites[0];
+  sprite0->x         = 1.834;
+  sprite0->y         = 8.765;
+  sprite0->textureId = 0;
+
+  Sprite* sprite1    = &map->sprites[1];
+  sprite1->x         = 5.323;
+  sprite1->y         = 5.365;
+  sprite1->textureId = 1;
+
+  Sprite* sprite2    = &map->sprites[2];
+  sprite2->x         = 4.123;
+  sprite2->y         = 10.265;
+  sprite2->textureId = 1;
 }
 
 void drawPixelToImageU8(Image* image, u64 x, u64 y, Vec4u8* color)
@@ -284,6 +310,16 @@ void add2DMapToImage(Map* map, Image* image, Texture* texture)
       drawPixelToImage(image, imagePlayerFovX, imagePlayerFovY, &GRAY);
       step += 0.05f;
     }
+  }
+
+  // draw sprites
+  u64     spriteCount = map->spriteCount;
+  Sprite* sprites     = map->sprites;
+  for (u64 i = 0; i < spriteCount; i++)
+  {
+    u64 spriteX = (sprites[i].x / map->width) * image->width / 2;
+    u64 spriteY = (sprites[i].y / map->height) * image->height;
+    drawRectangleToImage(image, spriteX - tileWidth / 10, spriteY - tileHeight / 10, tileWidth / 5, tileHeight / 5, &RED);
   }
 }
 

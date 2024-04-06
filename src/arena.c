@@ -11,6 +11,7 @@ u64 ArenaPush(Arena* arena, u64 size)
   }
   u64 out = arena->memory + arena->ptr;
   arena->ptr += size;
+  printf("INFO: Assigned %ld out of %ld\n", arena->ptr, arena->maxSize);
   return out;
 }
 void ArenaPop(Arena* arena, u64 size)
